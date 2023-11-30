@@ -9,7 +9,6 @@
       "email": "contact@cyril-bochet.dev"
     }
   ],
-  "version": "1.0.0",
   "autoload": {
     "psr-4": {
       "ImmodvisorApiClient\\Immodvisor\\": "src/"
