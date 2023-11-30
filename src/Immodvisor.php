@@ -55,7 +55,7 @@ class Immodvisor
             $brand_json = $api->companyGet($idCompany)->get();
             $brand = json_decode($brand_json, true, 512, JSON_THROW_ON_ERROR);
 
-            if (isset($brand["datas"]["company"]["rating"])) {
+            if (isset($brand["datas"]["company"])) {
                 $infoCompany = [
                     'rate' => $brand["datas"]["company"]["rating"],
                     'city' => $brand["datas"]["company"]["address"]["city"]
