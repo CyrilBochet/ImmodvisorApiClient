@@ -3,11 +3,18 @@
 namespace ImmodvisorApiClient\Immodvisor;
 
 use Exception;
+use RuntimeException;
 
 class Immodvisor
 {
     /**
      * Get the last reviews for a company.
+     *
+     * Retour :
+     * - reviews      : liste des derniers avis (objets)
+     * - fallbackUsed : true si les avis de la marque ont été utilisés à la place de ceux de la société
+     * - rating       : note de la société (null si l'appel API a échoué)
+     * - error        : message d'erreur si l'appel API a échoué, null sinon
      *
      * @param string $apiKey
      * @param string $saltIn
@@ -21,34 +28,39 @@ class Immodvisor
     public function getLastReview(string $apiKey, string $saltIn, string $saltOut, ?int $idCompany, int $maxReviews, string $env = 'prod'): array
     {
         $feedbacks = [];
+        $rating = null;
+        $error = null;
         $fallbackUsed = $idCompany === null;
         $api = $this->initializeApi($apiKey, $saltIn, $saltOut, $env);
 
         try {
-            $reviewsData = $api->reviewList($idCompany)->parse();
-            $brand_json = $api->companyGet($idCompany)->get();
-            $brand = json_decode($brand_json, true, 512, JSON_THROW_ON_ERROR);
+            $reviewsData = $this->parseChecked($api->reviewList($idCompany));
+            $brand = $this->parseChecked($api->companyGet($idCompany));
 
-            $rating = $brand["datas"]["company"]["rating"] ?? 0;
+            $rating = $brand->datas->company->rating ?? null;
             $reviews = $reviewsData->datas->reviews ?? [];
 
-            // Fallback si aucun avis ou note nulle
-            if (empty($reviews) || $rating <= 0) {
-                $reviewsData = $api->reviewList(null)->parse();
-                $brand_json = $api->companyGet(null)->get();
-                $brand = json_decode($brand_json, true, 512, JSON_THROW_ON_ERROR);
+            // Fallback sur la marque si aucun avis ou note nulle
+            if (empty($reviews) || $rating === null || $rating <= 0) {
+                $reviewsData = $this->parseChecked($api->reviewList(null));
+                $brand = $this->parseChecked($api->companyGet(null));
+                $rating = $brand->datas->company->rating ?? null;
                 $reviews = $reviewsData->datas->reviews ?? [];
                 $fallbackUsed = true;
             }
 
             $feedbacks = array_slice($reviews, 0, $maxReviews);
-        } catch (Exception) {
+        } catch (Exception $e) {
+            $error = $e->getMessage();
+            $rating = null;
+            $feedbacks = [];
         }
 
         return [
             'reviews' => $feedbacks,
             'fallbackUsed' => $fallbackUsed,
-            'rating' => $brand["datas"]["company"]["rating"] ?? null,
+            'rating' => $rating,
+            'error' => $error,
         ];
     }
 
@@ -71,24 +83,23 @@ class Immodvisor
         $api = $this->initializeApi($apiKey, $saltIn, $saltOut, $env);
 
         try {
-            $brand_json = $api->companyGet($idCompany)->get();
-            $brand = json_decode($brand_json, true, 512, JSON_THROW_ON_ERROR);
-            $rating = $brand["datas"]["company"]["rating"] ?? 0;
+            $brand = $this->parseChecked($api->companyGet($idCompany));
+            $rating = $brand->datas->company->rating ?? 0;
 
             if ($rating <= 0) {
-                $brand_json = $api->companyGet(null)->get();
-                $brand = json_decode($brand_json, true, 512, JSON_THROW_ON_ERROR);
+                $brand = $this->parseChecked($api->companyGet(null));
                 $fallbackUsed = true;
             }
 
-            if (isset($brand["datas"]["company"])) {
+            if (isset($brand->datas->company)) {
                 $infoCompany = [
-                    'rate' => $brand["datas"]["company"]["rating"],
-                    'city' => $brand["datas"]["company"]["address"]["city"],
+                    'rate' => $brand->datas->company->rating ?? null,
+                    'city' => $brand->datas->company->address->city ?? null,
                     'fallbackUsed' => $fallbackUsed,
                 ];
             }
         } catch (Exception) {
+            // Contrat historique : tableau vide si l'API est injoignable
         }
 
         return $infoCompany;
@@ -101,29 +112,21 @@ class Immodvisor
         $api = $this->initializeApi($apiKey, $saltIn, $saltOut, $env);
 
         try {
-            $brand_json = $api->companyList($nbReviews, $enabledOnly)->get();
-            $decoded = json_decode($brand_json, true, 512, JSON_THROW_ON_ERROR);
+            $decoded = $this->parseChecked($api->companyList($nbReviews, $enabledOnly));
 
-            if (
-                isset($decoded['status']) &&
-                $decoded['status'] === 1 &&
-                isset($decoded['datas']['companies']) &&
-                is_array($decoded['datas']['companies'])
-            ) {
-                foreach ($decoded['datas']['companies'] as $company) {
-                    $id = $company['id'] ?? null;
-                    $name = $company['name'] ?? 'Nom inconnu';
-                    if ($id) {
-                        $companyList[$id] = [
-                            'name' => $name,
-                            'city' => $company['address']['city'] ?? null,
-                            'siret' => $company['siret'] ?? null,
-                            'rating' => $company['rating'] ?? null,
-                        ];
-                    }
+            foreach ($decoded->datas->companies ?? [] as $company) {
+                $id = $company->id ?? null;
+                if ($id) {
+                    $companyList[$id] = [
+                        'name' => $company->name ?? 'Nom inconnu',
+                        'city' => $company->address->city ?? null,
+                        'siret' => $company->siret ?? null,
+                        'rating' => $company->rating ?? null,
+                    ];
                 }
             }
-        } catch (Exception $e) {
+        } catch (Exception) {
+            // Contrat historique : tableau vide si l'API est injoignable
         }
 
         return $companyList;
@@ -147,6 +150,34 @@ class Immodvisor
         $api->env($env);
         $api->debug($debug);
 
+        // Api ne vérifie le certificat TLS que si le referer est en https : on force
+        // un referer https pour garantir la vérification, y compris en CLI/cron.
+        $referer = Utils::getReferer();
+        if (!str_starts_with($referer, 'https://')) {
+            $host = parse_url($referer, PHP_URL_HOST) ?: 'localhost';
+            $referer = 'https://' . $host;
+        }
+        $api->setReferer($referer);
+
         return $api;
+    }
+
+
+    /**
+     * Vérifie la réponse du dernier service appelé (contenu, code http, status, checksum sortant)
+     * puis la parse en objet.
+     *
+     * @throws RuntimeException si la réponse est absente ou invalide
+     */
+    private function parseChecked(Api $api): object
+    {
+        if (!$api->check()) {
+            throw new RuntimeException(sprintf('Immodvisor %s : %s', $api->getService(), $api->getError() ?? 'erreur inconnue'));
+        }
+        $parsed = $api->parse();
+        if (!is_object($parsed)) {
+            throw new RuntimeException(sprintf('Immodvisor %s : réponse illisible', $api->getService()));
+        }
+        return $parsed;
     }
 }

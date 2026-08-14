@@ -14,13 +14,10 @@
       "ImmodvisorApiClient\\Immodvisor\\": "src/"
     }
   },
-  "autoload-dev": {
-    "psr-4": {
-      "ImmodvisorApiClient\\Immodvisor\\": "src/"
-    }
-  },
   "require": {
     "php": ">=8.1",
+    "ext-curl": "*",
+    "ext-calendar": "*",
     "ext-json": "*",
     "ext-simplexml": "*"
   }
