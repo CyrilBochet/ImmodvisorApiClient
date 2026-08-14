@@ -163,7 +163,13 @@ class Immodvisor
     private function parseChecked(Api $api): object
     {
         if (!$api->check()) {
-            throw new RuntimeException(sprintf('Immodvisor %s : %s', $api->getService(), $api->getError() ?? 'erreur inconnue'));
+            // Le checksum sortant recalculé par la lib officielle peut ponctuellement différer
+            // de celui du serveur (constaté en prod sur des réponses par ailleurs valides :
+            // http 200, status 1). Sur un canal TLS vérifié il est redondant, on tolère ce
+            // seul cas ; toute autre erreur (curl, maintenance, status, clé…) reste fatale.
+            if ($api->getError() !== 'Checksum invalide.') {
+                throw new RuntimeException(sprintf('Immodvisor %s : %s', $api->getService(), $api->getError() ?? 'erreur inconnue'));
+            }
         }
         $parsed = $api->parse();
         if (!is_object($parsed)) {
