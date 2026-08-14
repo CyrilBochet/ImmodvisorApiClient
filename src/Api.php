@@ -1034,8 +1034,9 @@ class Api extends ImmodvisorConfig implements iApi
      */
     protected static function datasAddString($k, $v, &$datas): void
     {
-        if (!is_array($v) && !is_object($v)) {
-            $v = trim(strip_tags($v));
+        // PATCH AFR (14/08/2026) : garde null + cast pour éviter le Deprecated strip_tags(null) en PHP 8
+        if ($v !== null && !is_array($v) && !is_object($v)) {
+            $v = trim(strip_tags((string)$v));
             if (!empty($v)) {
                 $datas[$k] = $v;
             }
@@ -1104,11 +1105,16 @@ class Api extends ImmodvisorConfig implements iApi
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_HTTPHEADER, array('APIKEY: ' . $this->api_key, 'APIVERSION: ' . parent::VERSION));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        $verifypeer = (substr($referer, 0, 5) == 'https') ? true : false;
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, $verifypeer);
+        // PATCH AFR (14/08/2026) : vérification TLS inconditionnelle (était conditionnée au protocole du referer appelant)
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+        // PATCH AFR (14/08/2026) : timeouts pour ne pas bloquer un worker si l'API ne répond plus
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
         curl_setopt($ch, CURLOPT_REFERER, $referer);
-        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 6.2) AppleWebKit/536.6 (KHTML, like Gecko) Chrome/20.0.1090.0 Safari/536.6');
+        // PATCH AFR (14/08/2026) : User-Agent honnête (était un faux Chrome 20 de 2012)
+        curl_setopt($ch, CURLOPT_USERAGENT, 'ImmodvisorApiClient/' . parent::VERSION . ' (+https://github.com/CyrilBochet/ImmodvisorApiClient)');
         switch ($method) {
             case self::METHOD_POST:
             case self::METHOD_PUT:

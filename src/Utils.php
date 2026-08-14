@@ -32,7 +32,8 @@ final class Utils extends ImmodvisorConfig {
 		if(is_array($var) || is_object($var) || empty($var)) {
 			return false;
 		}
-		if(!preg_match("/^\w(?:\w|-|\.(?!\.|@))*@\w(?:\w|-|\.(?!\.))*\.\w{2,3}$/", $var)) {
+		// PATCH AFR (14/08/2026) : filter_var au lieu d'une regex qui rejetait les TLD de plus de 3 caractères (.info, .immo, .paris…)
+		if(!filter_var($var, FILTER_VALIDATE_EMAIL)) {
 			return false;
 		}
 		if($check_trash && self::isEmailTrash($var)) {
@@ -73,13 +74,14 @@ final class Utils extends ImmodvisorConfig {
      */
 	public static function isInt($var, bool $unsigned=true): bool
     {
-		if(is_array($var) || is_object($var)) {
+		// PATCH AFR (14/08/2026) : garde null + casts pour éviter le Deprecated preg_match(null) en PHP 8
+		if($var === null || is_array($var) || is_object($var)) {
 			return false;
 		}
 		if($unsigned) {
-			return (bool)preg_match('`^[0-9]+$`', $var);
+			return (bool)preg_match('`^[0-9]+$`', (string)$var);
 		}
-		return (bool)preg_match('`^-?[0-9]+$`', $var);
+		return (bool)preg_match('`^-?[0-9]+$`', (string)$var);
 	}
 
     /**
@@ -89,13 +91,14 @@ final class Utils extends ImmodvisorConfig {
      */
 	public static function isFloat($var, bool $unsigned=true): bool
     {
-		if(is_array($var) || is_object($var)) {
+		// PATCH AFR (14/08/2026) : garde null + casts pour éviter le Deprecated preg_match(null) en PHP 8
+		if($var === null || is_array($var) || is_object($var)) {
 			return false;
 		}
 		if($unsigned) {
-			return (bool)preg_match('`^[0-9]*\.?[0-9]+$`', $var);
+			return (bool)preg_match('`^[0-9]*\.?[0-9]+$`', (string)$var);
 		}
-		return (bool)preg_match('`^-?[0-9]*\.?[0-9]+$`', $var);
+		return (bool)preg_match('`^-?[0-9]*\.?[0-9]+$`', (string)$var);
 	}
 
     /**

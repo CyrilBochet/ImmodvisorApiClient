@@ -43,4 +43,13 @@ Chaque réponse de l'API est vérifiée (code HTTP, status, checksum sortant) av
 ## Structure
 
 - `src/Immodvisor.php` — wrapper haut niveau (ce package)
-- `src/Api.php`, `src/Utils.php`, `src/Date.php`, `src/ImmodvisorConfig.php`, `src/iApi.php` — librairie officielle Immodvisor (© immodvisor), reprise telle quelle
+- `src/Api.php`, `src/Utils.php`, `src/Date.php`, `src/ImmodvisorConfig.php`, `src/iApi.php` — librairie officielle Immodvisor (© immodvisor)
+
+## Écarts par rapport à la librairie officielle
+
+La librairie officielle (v1.7.0, 2019) est reprise avec des patchs minimaux, tous marqués `PATCH AFR` dans le code :
+
+- `Api.php` : vérification TLS inconditionnelle (`CURLOPT_SSL_VERIFYPEER`/`VERIFYHOST`, était conditionnée au protocole du referer appelant) ; timeouts curl (connexion 5 s, total 10 s) ; User-Agent honnête ; garde null dans `datasAddString()`.
+- `Utils.php` : `isEmail()` via `filter_var` (la regex d'origine rejetait les TLD de plus de 3 caractères) ; gardes null dans `isInt()`/`isFloat()` (Deprecated PHP 8).
+
+Si Immodvisor publie une version plus récente, reporter ces points avant de remplacer les fichiers.

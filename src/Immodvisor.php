@@ -150,15 +150,6 @@ class Immodvisor
         $api->env($env);
         $api->debug($debug);
 
-        // Api ne vérifie le certificat TLS que si le referer est en https : on force
-        // un referer https pour garantir la vérification, y compris en CLI/cron.
-        $referer = Utils::getReferer();
-        if (!str_starts_with($referer, 'https://')) {
-            $host = parse_url($referer, PHP_URL_HOST) ?: 'localhost';
-            $referer = 'https://' . $host;
-        }
-        $api->setReferer($referer);
-
         return $api;
     }
 
